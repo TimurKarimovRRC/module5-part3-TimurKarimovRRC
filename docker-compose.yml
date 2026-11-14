@@ -1,0 +1,60 @@
+
+services:
+  mongo:
+    image: mongo:6.0
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    expose:
+      - "5000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017/bank_app
+      SECRET_KEY: local-development-only-key
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  transactions:
+    build:
+      context: ./transactions
+      dockerfile: Dockerfile
+    expose:
+      - "3000"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      PORT: "3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./studentportfolio
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+      - transactions
+
+volumes:
+  mongo_data:

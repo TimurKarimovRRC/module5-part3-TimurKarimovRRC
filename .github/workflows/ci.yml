@@ -1,0 +1,50 @@
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose
+        run: docker compose config --quiet
+
+      - name: Build and start services
+        run: docker compose up --build -d
+
+      - name: Test NGINX configuration
+        run: docker compose exec -T nginx nginx -t
+
+      - name: Test application endpoints
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost/ > /dev/null &&
+               curl -fsS http://localhost/api/login > /dev/null &&
+               curl -fsS http://localhost/api/transactions > /dev/null; then
+              break
+            fi
+            sleep 2
+          done
+
+          curl -fsS http://localhost/ -o /dev/null
+          curl -fsS http://localhost/api/login -o /dev/null
+
+          curl -fsS http://localhost/api/transactions |
+            python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("service") == "transactions" and data.get("status") == "running"'
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v
